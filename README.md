@@ -2,7 +2,7 @@
 
 A simple key-value engine, as the mid-term assignment of *Basics of Storage Techniques* course.
 
-**All of the project is based on source code of PolarDB content, held by Alibaba.**
+**All of the project is based on source code of PolarDB contest, held by Alibaba.**
 
 ## All you have to do:
 
