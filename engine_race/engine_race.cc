@@ -4,7 +4,7 @@
 namespace polar_race {
 
 RetCode Engine::Open(const std::string& name, Engine** eptr) {
-  return EngineRace::Open(name, eptr);
+    return EngineRace::Open(name, eptr);
 }
 
 Engine::~Engine() {
@@ -16,11 +16,11 @@ Engine::~Engine() {
 
 // 1. Open engine
 RetCode EngineRace::Open(const std::string& name, Engine** eptr) {
-  *eptr = NULL;
-  EngineRace *engine_race = new EngineRace(name);
+    *eptr = NULL;
+    EngineRace *engine_race = new EngineRace(name);
 
-  *eptr = engine_race;
-  return kSucc;
+    *eptr = engine_race;
+    return kSucc;
 }
 
 // 2. Close engine
@@ -29,12 +29,16 @@ EngineRace::~EngineRace() {
 
 // 3. Write a key-value pair into engine
 RetCode EngineRace::Write(const PolarString& key, const PolarString& value) {
-  return kSucc;
+    pthread_mutex_lock(&mu);
+    pthread_mutex_unlock(&mu);
+    return kSucc;
 }
 
 // 4. Read value of a key
 RetCode EngineRace::Read(const PolarString& key, std::string* value) {
-  return kSucc;
+    pthread_mutex_lock(&mu);
+    pthread_mutex_unlock(&mu);
+    return kSucc;
 }
 
 /*
@@ -50,7 +54,7 @@ RetCode EngineRace::Read(const PolarString& key, std::string* value) {
 //   Range("", "", visitor)
 RetCode EngineRace::Range(const PolarString& lower, const PolarString& upper,
     Visitor &visitor) {
-  return kSucc;
+    return kSucc;
 }
 
 }  // namespace polar_race
