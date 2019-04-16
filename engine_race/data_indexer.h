@@ -47,7 +47,7 @@ namespace polar_race {
                 if (fd < 0)
                     return kIOError;
                 
-                void* ptr = mmap(NULL, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+                void *ptr = mmap(NULL, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
                 if (ptr == MAP_FAILED) {
                     close(fd);
                     return kIOError;
