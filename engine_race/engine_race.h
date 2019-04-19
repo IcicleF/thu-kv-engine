@@ -17,8 +17,10 @@ class EngineRace : public Engine  {
       
         explicit EngineRace(const std::string& dir)
             : mu(PTHREAD_MUTEX_INITIALIZER), indexer(dir), store(dir), logger(dir) {
-            ensureDirectory(pathJoin(dir, "index").c_str());
-            ensureDirectory(pathJoin(dir, "data").c_str());
+            root = dir;
+            ensureDirectory(dir);
+            ensureDirectory(pathJoin(dir, "index"));
+            ensureDirectory(pathJoin(dir, "data"));
         }
       
         ~EngineRace();
@@ -36,9 +38,10 @@ class EngineRace : public Engine  {
         RetCode Range(const PolarString& lower,
             const PolarString& upper,
             Visitor &visitor) override;
-      
+    
     private: 
         pthread_mutex_t mu;
+        std::string root;
         DataIndexer indexer;
         DataStore store;
         DataLogger logger;

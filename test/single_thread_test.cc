@@ -73,6 +73,7 @@ int main() {
     for (int i = 0; i < KV_CNT; ++i) {
         ret = engine->Write(ks[i], vs_1[i]);
         assert(ret == kSucc);
+        printf("fin %d\n", i + 1);
     }
 
     for (int i = 0; i < KV_CNT; ++i) {

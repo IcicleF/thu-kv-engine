@@ -1,2 +1,8 @@
 .vscode
 *.pdf
+lib/
+*.o
+*_test
+engine_race/test.cpp
+engine_race/test
+test/data
