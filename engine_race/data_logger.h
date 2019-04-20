@@ -5,32 +5,26 @@
 #include <vector>
 #include <functional>
 
-#define LOG_START   0xABABABAB
-#define LOG_END     0xEDEDEDED
-#define LOG_CTRL    0x5555AAAA
-#define LOG_COMMIT  0xF1E2D3C4
+#define LOG_START       0xABABABAB
+#define LOG_END         0xEDEDEDED
+
+#define CHECKPOINT_SZ   (1 << 25)
 
 /*
  * Structure of a valid log:
- *  - LOG_START                 (4 bytes)
- *  - Length of file name       (4 bytes)
- *  - File name
- *  - Offset                    (4 bytes)
- *  - Len                       (4 bytes)
- *  - Origin Omission Flag      (4 bytes)
- *  - Origin Data               ([Len] bytes if exist)
- *  - New Data                  ([Len] bytes)
- *  - LOG_END                   (4 bytes)
- * 
- * Structure of a valid log file:
- *  - logs
- *  - LOG_COMMIT                (4 bytes)
+ *  - LOG_START         (4 bytes)
+ *  - keyLen            (4 bytes)
+ *  - valLen            (4 bytes)
+ *  - key
+ *  - val
+ *  - pointer to head   (4 bytes)
+ *  - LOG_END           (4 bytes)
  */
 
 namespace polar_race {
     class DataLogger {
         public:
-            explicit DataLogger(const std::string& root) : dir(root) { }
+            explicit DataLogger(const std::string& root) : dir(root), cur(0) { }
             ~DataLogger() {
                 int r = lockf(fd, F_ULOCK, 0);
                 if (r < 0)
@@ -38,26 +32,15 @@ namespace polar_race {
             }
 
             void init();
-
+            
             void clearLog();
-            void log(const std::string& filename, uint32_t offset, uint32_t len, bool omit, void *oldData, void *newData);
-            void commit();
-
-            int readLog(std::function<int(const std::string&, uint32_t, uint32_t, void *)> callback);
+            void writeLog(const char *key, int keyLen, const char *value, int valLen);
+            bool readLog(char *key, int *keyLen, char *value, int *valLen);
 
         private:
             std::string dir;
             int fd;
-
-            struct TempLog {
-                uint32_t filenamelen;
-                std::string filename;
-                uint32_t offset;
-                uint32_t len;
-                bool omit;
-                void *oldData;
-                void *newData;
-            };
+            int cur;
     };
 } // namespace polar_race
 

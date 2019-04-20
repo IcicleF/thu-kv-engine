@@ -5,14 +5,7 @@ namespace polar_race {
         uint32_t h = 37;
         for (int i = 0; i < size; ++i)
             h = (h * 54059) ^ (s[i] * 76963);
-        return h;
-    }
-
-    uint32_t getFileIndex(uint32_t hashValue) {
-        return (hashValue >> 16);
-    }
-    uint32_t getOffsetIndex(uint32_t hashValue) {
-        return (hashValue & 0xFFFF);
+        return h & (ENTRIES_COUNT - 1);
     }
 
     int ensureDirectory(const std::string &directory) {
@@ -51,19 +44,5 @@ namespace polar_race {
         if (res[res.size() - 1] != '/')
             res += '/';
         return res + b;
-    }
-
-    int writeToFile(const std::string &fileName, int offset, int len, void *data) {
-        int fd = open(fileName.c_str(), O_RDWR | O_CREAT, 0777);
-        if (fd < 0)
-            return -1;
-        posix_fallocate(fd, offset, len);
-        lseek(fd, offset, SEEK_SET);
-        ssize_t r = write(fd, data, len);
-        if (r < 0)
-            return -1;
-        fsync(fd);
-        close(fd);
-        return 0;
     }
 }

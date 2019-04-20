@@ -19,7 +19,6 @@ class EngineRace : public Engine  {
             : mu(PTHREAD_MUTEX_INITIALIZER), indexer(dir), store(dir), logger(dir) {
             root = dir;
             ensureDirectory(dir);
-            ensureDirectory(pathJoin(dir, "index"));
             ensureDirectory(pathJoin(dir, "data"));
         }
       
@@ -38,6 +37,9 @@ class EngineRace : public Engine  {
         RetCode Range(const PolarString& lower,
             const PolarString& upper,
             Visitor &visitor) override;
+    
+    private:
+        RetCode doWrite(const PolarString& key, const PolarString& value, bool doLog);
     
     private: 
         pthread_mutex_t mu;

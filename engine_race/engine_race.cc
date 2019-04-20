@@ -14,15 +14,24 @@ Engine::~Engine() {
  * Complete the functions below to implement you own engine
  */
 
+char keybuf[MAX_KEYSZ + 5], valbuf[MAX_VALSZ + 5];
+
 // 1. Open engine
 RetCode EngineRace::Open(const std::string& name, Engine** eptr) {
     *eptr = NULL;
     EngineRace *engine_race = new EngineRace(name);
 
     engine_race->logger.init();
+    engine_race->indexer.init();
     engine_race->store.init();
 
-    engine_race->logger.readLog(writeToFile);
+    int keyLen, valLen;
+    bool r = engine_race->logger.readLog(keybuf, &keyLen, valbuf, &valLen);
+    if (r) {
+        RetCode ret;
+        if ((ret = engine_race->doWrite(PolarString(keybuf, keyLen), PolarString(valbuf, valLen), false)) != kSucc)
+            return ret;
+    }
     engine_race->logger.clearLog();
 
     *eptr = engine_race;
@@ -33,40 +42,22 @@ RetCode EngineRace::Open(const std::string& name, Engine** eptr) {
 EngineRace::~EngineRace() {
 }
 
-char recbuf[MAX_VALSZ << 1];
-
 // 3. Write a key-value pair into engine
 RetCode EngineRace::Write(const PolarString& key, const PolarString& value) {
+    return doWrite(key, value, true);
+}
+
+RetCode EngineRace::doWrite(const PolarString& key, const PolarString& value, bool doLog) {
     RetCode ret = kSucc;
     pthread_mutex_lock(&mu); {
-        Location loc, next;
-
-        // logger.clearLog();
-        uint32_t keyHash = strHash(key.data(), key.size());
-        if ((ret = indexer.getLocation(keyHash, &next)) != kSucc)
+        if (doLog)
+            logger.writeLog(key.data(), key.size(), value.data(), value.size());
+        Location loc;
+        store.getWriteLocation(&loc);
+        if ((ret = store.writeData(key.data(), key.size(), value.data(), value.size())) != kSucc)
             goto unlock;
-        if ((ret = store.getWriteLocation(key.size(), value.size(), &loc)) != kSucc)
+        if ((ret = indexer.insert(key.data(), key.size(), loc)) != kSucc)
             goto unlock;
-        
-        // todo: garbage removal
-        uint32_t fileNo = getFileIndex(keyHash), fileOffs = getOffsetIndex(keyHash) * sizeof(Location);
-        std::string indexFile = pathJoin(root, "index/" + std::to_string(fileNo));
-        std::string dataFile = pathJoin(root, "data/" + std::to_string(loc.fileNo));
-        logger.log(indexFile, fileOffs, sizeof(Location), false, (void *)&next, (void *)&loc);
-        
-        RecordMeta *meta = (RecordMeta *)recbuf;
-        meta->keyLen = key.size();
-        meta->valLen = value.size();
-        meta->nextFileNo = next.fileNo;
-        meta->nextOffset = next.offset;
-        memcpy(recbuf + sizeof(RecordMeta), key.data(), key.size());
-        memcpy(recbuf + sizeof(RecordMeta) + key.size(), value.data(), value.size());
-        logger.log(dataFile, loc.offset, loc.len, true, NULL, (void *)recbuf);
-        logger.commit();
-
-        if (logger.readLog(writeToFile) < 0)
-            exit(-1);
-        logger.clearLog();
     }
 unlock:
     pthread_mutex_unlock(&mu);
@@ -78,12 +69,13 @@ RetCode EngineRace::Read(const PolarString& key, std::string* value) {
     RetCode ret = kSucc;
     pthread_mutex_lock(&mu); {
         Location loc;
-        uint32_t keyHash = strHash(key.data(), key.size());
-        if ((ret = indexer.getLocation(keyHash, &loc)) != kSucc)
+        if ((ret = indexer.find(key.data(), key.size(), &loc)) != kSucc)
             goto unlock;
-        if ((ret = store.readData(key.data(), key.size(), recbuf, &loc)) != kSucc)
+        int valLen;
+        if ((ret = store.readData(valbuf, &valLen, loc)) != kSucc)
             goto unlock;
-        *value = std::string(recbuf);
+        valbuf[valLen] = 0;
+        *value = std::string(valbuf);
     }
 unlock:
     pthread_mutex_unlock(&mu);

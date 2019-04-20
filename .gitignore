@@ -6,3 +6,5 @@ lib/
 engine_race/test.cpp
 engine_race/test
 test/data
+bench/data
+bench/bench
