@@ -8,7 +8,9 @@
 #define LOG_START       0xABABABAB
 #define LOG_END         0xEDEDEDED
 
-#define CHECKPOINT_SZ   (1 << 25)
+#define LOG_FILESZ      134254952
+#define LOG_LIM         130059248
+#define LOG_MAX         256
 
 /*
  * Structure of a valid log:
@@ -17,30 +19,32 @@
  *  - valLen            (4 bytes)
  *  - key
  *  - val
- *  - pointer to head   (4 bytes)
  *  - LOG_END           (4 bytes)
  */
 
 namespace polar_race {
     class DataLogger {
         public:
-            explicit DataLogger(const std::string& root) : dir(root), cur(0) { }
+            explicit DataLogger(const std::string& root) : dir(root) { }
             ~DataLogger() {
-                int r = lockf(fd, F_ULOCK, 0);
-                if (r < 0)
-                    exit(-1);
+                munmap(ptr, LOG_FILESZ);
+                lockf(fd, F_ULOCK, 0);
+                close(fd);
             }
 
             void init();
             
             void clearLog();
             void writeLog(const char *key, int keyLen, const char *value, int valLen);
-            bool readLog(char *key, int *keyLen, char *value, int *valLen);
+            void readLog(std::vector<RecoveredLog> *logs);
+            bool needFlush();
 
         private:
             std::string dir;
+            void *ptr;
+            char *fp, *fend;
             int fd;
-            int cur;
+            int cnt;
     };
 } // namespace polar_race
 

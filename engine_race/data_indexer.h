@@ -7,12 +7,14 @@
 #define LOC_READ        0
 #define LOC_WRITE       1
 
+#define BASE_KEYFILESZ  (1 << 20)
+
 /*
  * Structure of index file:
  *  - offset pointer    (* ENTRIES_COUNT, sizeof(off_t) each)
  *  - linked list
  *   - (for each item)
- *    - key length      (2 bytes)
+ *    - key length      (4 bytes)
  *    - fileNo          (4 bytes)
  *    - offset          (4 bytes)
  *    - next offset     (sizeof(off_t))
@@ -29,21 +31,25 @@ namespace polar_race {
 
     class DataIndexer {
         public:
-            explicit DataIndexer(const std::string& root) : dir(root) { }
+            explicit DataIndexer(const std::string& root) : dir(root), locs(NULL), keys(NULL) { }
             ~DataIndexer() {
-                munmap(locs, INDEX_MAPSZ);
-                close(key_fd);
+                if (locs != NULL)
+                    munmap(locs, INDEX_MAPSZ);
+                if (keys != NULL)
+                    munmap(keys, keyFileLen);
             }
 
             RetCode init();
             RetCode find(const char *key, int keyLen, Location *loc);
             RetCode insert(const char *key, int keyLen, Location loc);
+            void syncIndex();
 
         private:
             std::string dir;
-            int key_fd;
             
             off_t *locs;
+            char *keys;
+            size_t keyFileLen, *usedLen;
     };
 }
 

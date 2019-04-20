@@ -32,7 +32,16 @@ namespace polar_race {
     struct Location {
         int32_t fileNo;
         uint32_t offset;
+
         Location(int32_t fileNo = -1, uint32_t offset = 0) : fileNo(fileNo), offset(offset) { }
+    };
+
+    struct RecoveredLog {
+        int keyLen, valLen;
+        char *key, *value;
+
+        RecoveredLog(char *key = NULL, int keyLen = 0, char *value = NULL, int valLen = 0)
+            : key(key), keyLen(keyLen), value(value), valLen(valLen) { }
     };
 
     uint32_t strHash(const char* s, int size);

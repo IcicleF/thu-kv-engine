@@ -14,88 +14,106 @@ namespace polar_race {
             posix_fallocate(fd, 0, INDEX_MAPSZ);
         }
         void *ptr = mmap(NULL, INDEX_MAPSZ, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-        if (ptr == MAP_FAILED) {
-            close(fd);
+        close(fd);
+        if (ptr == MAP_FAILED)
             return kIOError;
-        }
-        locs = reinterpret_cast<off_t *>(ptr);
+        locs = (off_t *)ptr;
         if (new_create) {
             memset(locs, -1, INDEX_MAPSZ);
-            msync(ptr, INDEX_MAPSZ, MS_SYNC);
+            msync(ptr, INDEX_MAPSZ, MS_ASYNC);
         }
 
         std::string keyFile = pathJoin(dir, "keys");
-        int key_fd = open(keyFile.c_str(), O_RDWR | O_CREAT, 0777);
-        if (key_fd < 0) {
-            close(fd);
-            return kIOError;
+        new_create = false;
+        if (!fileExists(keyFile.c_str())) {
+            keyFileLen = BASE_KEYFILESZ;
+            new_create = true;
         }
-        this->key_fd = key_fd;
+        else {
+            struct stat stat_buf;
+            stat(keyFile.c_str(), &stat_buf);
+            keyFileLen = stat_buf.st_size;
+        }
+        fd = open(keyFile.c_str(), O_RDWR | O_CREAT, 0777);
+        if (fd < 0)
+            return kIOError;
+        posix_fallocate(fd, 0, keyFileLen);
+        ptr = mmap(NULL, keyFileLen, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+        close(fd);
+        if (ptr == MAP_FAILED)
+            return kIOError;
+        keys = (char *)ptr;
+        usedLen = (size_t *)keys;
+        if (new_create)
+            *usedLen = sizeof(size_t);
         return kSucc;
     }
     
+    // to be modified
     RetCode DataIndexer::insert(const char *key, int keyLen, Location loc) {
-        static char buf[MAX_KEYSZ + 5];
         uint32_t index = strHash(key, keyLen);
         off_t ptr = locs[index], prev = -1;
-        IndexItem ind;
+        IndexItem *ind;
         while (ptr != -1) {
-            lseek(key_fd, ptr, SEEK_SET);
-            if (read(key_fd, &ind, sizeof(IndexItem)) < 0)
-                return kIOError;
-            if (keyLen == ind.keyLen) {
-                if (read(key_fd, buf, ind.keyLen) < 0)
-                    return kIOError;
-                if (memcpy(buf, key, keyLen) == 0)
+            ind = (IndexItem *)(keys + ptr);
+            if (keyLen == ind->keyLen) {
+                if (memcmp(keys + ptr + sizeof(IndexItem), key, keyLen) == 0)
                     break;
             }
             prev = ptr;
-            ptr = ind.next;
+            ptr = ind->next;
         }
         if (prev != -1 && ptr != -1) {
-            IndexItem prevInd;
-            lseek(key_fd, prev, SEEK_SET);
-            read(key_fd, &prevInd, sizeof(IndexItem));
-            prevInd.next = ind.next;
-            lseek(key_fd, -sizeof(IndexItem), SEEK_CUR);
-            write(key_fd, &prevInd, sizeof(IndexItem));
+            IndexItem *ind_prev = (IndexItem *)(keys + prev);
+            ind_prev->next = ind->next;
         }
 
-        ind.keyLen = keyLen;
-        ind.fileNo = loc.fileNo;
-        ind.offset = loc.offset;
-        ind.next = locs[index];
-
-        locs[index] = lseek(key_fd, 0, SEEK_END);
-        msync(locs + index, sizeof(off_t), MS_SYNC);
-
-        write(key_fd, &ind, sizeof(IndexItem));
-        write(key_fd, key, keyLen);
-        fsync(key_fd);
+        size_t newUsedLen = *usedLen + sizeof(IndexItem) + keyLen;
+        if (newUsedLen > keyFileLen) {
+            munmap(keys, keyFileLen);
+            std::string keyFile = pathJoin(dir, "keys");
+            int fd = open(keyFile.c_str(), O_RDWR, 0777);
+            while (newUsedLen > keyFileLen) {
+                posix_fallocate(fd, keyFileLen, keyFileLen);
+                keyFileLen *= 2;
+            }
+            void *ptr = mmap(NULL, keyFileLen, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+            keys = (char *)ptr;
+            usedLen = (size_t *)keys;
+            close(fd);
+        }
+        
+        ind = (IndexItem *)(keys + *usedLen);
+        ind->keyLen = keyLen;
+        ind->fileNo = loc.fileNo;
+        ind->offset = loc.offset;
+        ind->next = locs[index];
+        memcpy(keys + *usedLen + sizeof(IndexItem), key, keyLen);
+        locs[index] = *usedLen;
+        *usedLen = newUsedLen;
 
         return kSucc;
     }
 
     RetCode DataIndexer::find(const char *key, int keyLen, Location *loc) {
-        static char buf[MAX_KEYSZ + 5];
         uint32_t index = strHash(key, keyLen);
         off_t ptr = locs[index];
-        IndexItem ind;
+        IndexItem *ind;
         while (ptr != -1) {
-            lseek(key_fd, ptr, SEEK_SET);
-            if (read(key_fd, &ind, sizeof(IndexItem)) < 0)
-                return kIOError;
-            if (keyLen == ind.keyLen) {
-                if (read(key_fd, buf, ind.keyLen) < 0)
-                    return kIOError;
-                if (memcmp(buf, key, keyLen) == 0) {
-                    loc->fileNo = ind.fileNo;
-                    loc->offset = ind.offset;
+            ind = (IndexItem *)(keys + ptr);
+            if (keyLen == ind->keyLen)
+                if (memcmp(keys + ptr + sizeof(IndexItem), key, keyLen) == 0) {
+                    loc->fileNo = ind->fileNo;
+                    loc->offset = ind->offset;
                     return kSucc;
                 }
-            }
-            ptr = ind.next;
+            ptr = ind->next;
         }
         return kNotFound;
+    }
+
+    void DataIndexer::syncIndex() {
+        msync(locs, INDEX_MAPSZ, MS_ASYNC);
+        msync(keys, keyFileLen, MS_ASYNC);
     }
 }

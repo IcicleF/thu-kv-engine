@@ -16,22 +16,26 @@
 namespace polar_race {
     class DataStore {
         public:
-            explicit DataStore(const std::string& root) : dir(pathJoin(root, "data")) { }
-            ~DataStore() { 
-                close(fd);
+            explicit DataStore(const std::string& root) : dir(pathJoin(root, "data")) {
+
+            }
+            ~DataStore() {
+                munmap(ptr, STORE_FILESZ);
             }
 
             void init();
 
-            RetCode readData(char *value, int *valLen, Location loc);
+            RetCode readData(char **value, int *valLen, Location loc);
             RetCode writeData(const char *key, int keyLen, const char *value, int valLen);
+            void syncData();
             void getWriteLocation(Location *loc);
 
         private:
             std::string dir;
             int32_t lastNo;
             int fd;
-            off_t cur;
+            void *ptr;
+            char *fp, *fend, *flast;
     };
 }
 

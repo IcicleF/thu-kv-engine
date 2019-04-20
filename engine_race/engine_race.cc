@@ -3,6 +3,8 @@
 
 namespace polar_race {
 
+bool needUpdate;
+
 RetCode Engine::Open(const std::string& name, Engine** eptr) {
     return EngineRace::Open(name, eptr);
 }
@@ -15,6 +17,7 @@ Engine::~Engine() {
  */
 
 char keybuf[MAX_KEYSZ + 5], valbuf[MAX_VALSZ + 5];
+std::vector<RecoveredLog> logs;
 
 // 1. Open engine
 RetCode EngineRace::Open(const std::string& name, Engine** eptr) {
@@ -25,12 +28,15 @@ RetCode EngineRace::Open(const std::string& name, Engine** eptr) {
     engine_race->indexer.init();
     engine_race->store.init();
 
+    needUpdate = false;
+
     int keyLen, valLen;
-    bool r = engine_race->logger.readLog(keybuf, &keyLen, valbuf, &valLen);
-    if (r) {
-        RetCode ret;
-        if ((ret = engine_race->doWrite(PolarString(keybuf, keyLen), PolarString(valbuf, valLen), false)) != kSucc)
-            return ret;
+    engine_race->logger.readLog(&logs);
+    if (logs.size() > 0) {
+        for (std::size_t i = 0; i < logs.size(); ++i)
+            engine_race->doWrite(PolarString(logs[i].key, logs[i].keyLen), PolarString(logs[i].value, logs[i].valLen), false);
+        engine_race->indexer.syncIndex();
+        engine_race->store.syncData();
     }
     engine_race->logger.clearLog();
 
@@ -40,6 +46,9 @@ RetCode EngineRace::Open(const std::string& name, Engine** eptr) {
 
 // 2. Close engine
 EngineRace::~EngineRace() {
+    indexer.syncIndex();
+    store.syncData();
+    logger.clearLog();
 }
 
 // 3. Write a key-value pair into engine
@@ -58,11 +67,19 @@ RetCode EngineRace::doWrite(const PolarString& key, const PolarString& value, bo
             goto unlock;
         if ((ret = indexer.insert(key.data(), key.size(), loc)) != kSucc)
             goto unlock;
+        if (needUpdate) {
+            needUpdate = false;
+            indexer.syncIndex();
+            store.syncData();
+            logger.clearLog();
+        }
     }
 unlock:
     pthread_mutex_unlock(&mu);
     return ret;
 }
+
+extern bool hajime;
 
 // 4. Read value of a key
 RetCode EngineRace::Read(const PolarString& key, std::string* value) {
@@ -71,11 +88,11 @@ RetCode EngineRace::Read(const PolarString& key, std::string* value) {
         Location loc;
         if ((ret = indexer.find(key.data(), key.size(), &loc)) != kSucc)
             goto unlock;
+        char *valptr = valbuf;
         int valLen;
-        if ((ret = store.readData(valbuf, &valLen, loc)) != kSucc)
+        if ((ret = store.readData(&valptr, &valLen, loc)) != kSucc)
             goto unlock;
-        valbuf[valLen] = 0;
-        *value = std::string(valbuf);
+        *value = std::string(valptr, valLen);
     }
 unlock:
     pthread_mutex_unlock(&mu);
